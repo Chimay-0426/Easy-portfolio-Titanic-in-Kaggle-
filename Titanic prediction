@@ -1,0 +1,126 @@
+# This Python 3 environment comes with many helpful analytics libraries installed
+# It is defined by the kaggle/python Docker image: https://github.com/kaggle/docker-python
+# For example, here's several helpful packages to load
+
+import numpy as np # linear algebra
+import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
+
+# Input data files are available in the read-only "../input/" directory
+# For example, running this (by clicking run or pressing Shift+Enter) will list all files under the input directory
+
+import os
+for dirname, _, filenames in os.walk('/kaggle/input'):
+    for filename in filenames:
+        print(os.path.join(dirname, filename))
+
+# You can write up to 20GB to the current directory (/kaggle/working/) that gets preserved as output when you create a version using "Save & Run All" 
+# You can also write temporary files to /kaggle/temp/, but they won't be saved outside of the current session
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import warnings
+warnings.filterwarnings('ignore')
+%matplotlib inline
+
+train_df = pd.read_csv('/kaggle/input/titanic/train.csv')
+test_df = pd.read_csv('/kaggle/input/titanic/test.csv')
+train_df = train_df.drop(["Ticket", "Cabin"], axis=1)
+test_df = test_df.drop(["Ticket", "Cabin"], axis=1)
+combine = [train_df, test_df]
+
+freq_port = train_df["Embarked"].dropna().mode()[0]
+train_df["Embarked"] = train_df["Embarked"].fillna(freq_port)
+test_df['Fare'] = test_df['Fare'].fillna(test_df['Fare'].dropna().median())
+combine = [train_df, test_df]
+for dataset in combine:
+    dataset['Age'] = dataset['Age'].fillna(dataset['Age'].dropna().median())
+    dataset['Title'] = dataset.Name.str.extract(' ([A-Za-z]+)\.', expand=False)
+    dataset['Title'] = dataset['Title'].replace(['Lady', 'Countess','Capt', 'Col', 'Don', 'Dr', 'Major', 'Rev', 'Sir', 'Jonkheer', 'Dona'], 'Rare')
+    dataset['Title'] = dataset['Title'].replace('Mlle', 'Miss')
+    dataset['Title'] = dataset['Title'].replace('Ms', 'Miss')
+    dataset['Title'] = dataset['Title'].replace('Mme', 'Mrs')
+    dataset['AgeBand'] = pd.cut(dataset['Age'], 5)
+    dataset['FareBand'] = pd.qcut(dataset['Fare'], 4)
+    dataset['FamilySize'] = dataset['SibSp'] + dataset['Parch'] + 1
+    dataset['IsAlone'] = 0
+    dataset.loc[dataset['FamilySize'] == 1, 'IsAlone'] = 1
+    dataset['Age*Class'] = dataset.Age * dataset.Pclass
+    
+from sklearn.preprocessing import LabelEncoder
+lbe = LabelEncoder()
+for dataset in combine:
+    dataset['Sex_lbe'] = lbe.fit_transform(dataset['Sex'])
+    dataset['Embarked_lbe'] = lbe.fit_transform(dataset['Embarked'])
+    dataset['Title_lbe'] = lbe.fit_transform(dataset['Title'])
+    dataset['AgeBand'] = lbe.fit_transform(dataset['AgeBand'])
+    dataset['FareBand'] = lbe.fit_transform(dataset['FareBand'])
+
+train_df = train_df.drop(['Name', 'PassengerId'], axis=1)
+test_df = test_df.drop(['Name', 'PassengerId'], axis=1)
+
+# 1. X_trainには、'Pclass', 'Sex_lbe', 'Age', 'SibSp', 'Parch', 'Fare','Embarked_lbe','Title_lbe'が入ったtrain_dfを代入してください。
+original_columns = ['Pclass', 'Sex_lbe', 'Age', 'SibSp', 'Parch', 'Fare',
+       'Embarked_lbe','Title_lbe']
+X_train = train_df[original_columns]
+
+# 2. Y_trainには、Survivedのみが入ったtrain_dfを代入してください。
+y_train = train_df["Survived"]
+
+# 3. X_testには、test_dfの最初からある特徴量のみを代入してください。
+X_test  = test_df[original_columns]
+
+original_columns = ['Pclass', 'Sex_lbe', 'Age', 'SibSp', 'Parch', 'Fare',
+       'Embarked_lbe','Title_lbe']
+
+X_train = train_df[original_columns]
+y_train = train_df["Survived"]
+X_test  = test_df[original_columns]
+
+# 4. X_train、Y_train、X_testの行数、列数を出力してください。
+#(if need)print(X_train.shape, y_train.shape, X_test.shape)
+
+from sklearn.model_selection import train_test_split
+# 学習用データと評価用データに分割
+X_trn, X_val, y_trn, y_val = train_test_split(X_train, y_train, test_size=0.33, random_state=42)
+
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import GroupKFold
+from sklearn.model_selection import StratifiedKFold
+
+import lightgbm as lgb
+from sklearn.metrics import accuracy_score
+
+lgb_params = {
+    "objective":"binary",
+    "metric": "binary_error"
+}
+
+acc_results =[]
+cv = StratifiedKFold(n_splits=3, random_state=42, shuffle=True)
+# 検証データの予測値を保存するための配列。
+test_preds = np.zeros(len(X_test))
+for trn_index, val_index in cv.split(X_train, y_train):
+    X_trn, X_val = X_train.loc[trn_index], X_train.loc[val_index]
+    y_trn, y_val = y_train[trn_index], y_train[val_index]
+    
+    train_lgb = lgb.Dataset(X_trn, y_trn)
+    validation_lgb = lgb.Dataset(X_val, y_val)
+    model = lgb.train(lgb_params, train_lgb, num_boost_round=1000, valid_sets=[train_lgb, validation_lgb], verbose_eval=200, categorical_feature=["Pclass", "Sex_lbe", "Embarked_lbe"], early_stopping_rounds=100)
+    pred = model.predict(X_val)
+    pred = np.where(pred>=0.5, 1, 0)
+    acc = accuracy_score(y_val, pred)
+    acc_results.append(acc)
+    
+    # 予測値をfold数で割ったものを足していく。
+    test_preds += model.predict(X_test) / cv.n_splits
+    
+print("Average acc:", np.mean(acc_results))
+
+# サンプル提出ファイルの予測値列の値を変えるだけで提出。
+submission = pd.read_csv("/kaggle/input/titanic/gender_submission.csv")
+submission["Survived"] = np.where(test_preds>=0.5, 1, 0)
+display(submission.head(10))
+# 提出ファイルを出力
+submission.to_csv("first_submission.csv", index=False)
