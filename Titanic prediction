@@ -59,15 +59,15 @@ for dataset in combine:
 train_df = train_df.drop(['Name', 'PassengerId'], axis=1)
 test_df = test_df.drop(['Name', 'PassengerId'], axis=1)
 
-# 1. X_trainには、'Pclass', 'Sex_lbe', 'Age', 'SibSp', 'Parch', 'Fare','Embarked_lbe','Title_lbe'が入ったtrain_dfを代入してください。
+
 original_columns = ['Pclass', 'Sex_lbe', 'Age', 'SibSp', 'Parch', 'Fare',
        'Embarked_lbe','Title_lbe']
 X_train = train_df[original_columns]
 
-# 2. Y_trainには、Survivedのみが入ったtrain_dfを代入してください。
+
 y_train = train_df["Survived"]
 
-# 3. X_testには、test_dfの最初からある特徴量のみを代入してください。
+
 X_test  = test_df[original_columns]
 
 original_columns = ['Pclass', 'Sex_lbe', 'Age', 'SibSp', 'Parch', 'Fare',
@@ -77,7 +77,7 @@ X_train = train_df[original_columns]
 y_train = train_df["Survived"]
 X_test  = test_df[original_columns]
 
-# 4. X_train、Y_train、X_testの行数、列数を出力してください。
+
 #(if need)print(X_train.shape, y_train.shape, X_test.shape)
 
 from sklearn.model_selection import train_test_split
@@ -118,7 +118,7 @@ for trn_index, val_index in cv.split(X_train, y_train):
     
 print("Average acc:", np.mean(acc_results))
 
-# サンプル提出ファイルの予測値列の値を変えるだけで提出。
+
 submission = pd.read_csv("/kaggle/input/titanic/gender_submission.csv")
 submission["Survived"] = np.where(test_preds>=0.5, 1, 0)
 display(submission.head(10))
